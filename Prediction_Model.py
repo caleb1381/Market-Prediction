@@ -3,13 +3,15 @@ import warnings
 import pandas as pd
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+from math import sqrt
 import glob
 import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
 import matplotlib
 import seaborn as sns
-
+from scipy.stats import boxcox
 from statsmodels.graphics.tsaplots import plot_acf,plot_pacf
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.arima_model import ARIMA,ARMA
@@ -51,13 +53,15 @@ The company is now in the midst of a battle of take over
 with Elon Musk for a by out of $46+ billion and since stock prices have soared.''')
     st.subheader('Dataset of Twitter Stock Market Price')
     df = pd.read_csv('TWITTER.csv')
-    return df
+    # Return the train and test subsets
+    return  df
 
 def preprocessing(df):
 #converting normal date column to date pandas date and time
     df["Date"] = pd.to_datetime(df["Date"])
     return df
 
+@st.cache_data
 def plotting(df):
     fig, axes = plt.subplots(1,2,figsize=(14,5))
     axes[0].plot(df[['Open','High','Low','Close']])
@@ -71,7 +75,7 @@ def plotting(df):
 # display the plot using st.pyplot()
     st.pyplot(fig)
     
-    
+@st.cache_resource   
 def resampling(df):
     df = df.set_index("Date")
     fig, axes = plt.subplots(2,2,figsize=[15, 7])
@@ -96,6 +100,7 @@ def resampling(df):
     axes[1,1].set_title("Quarterly mean Price",size=16)
     st.pyplot(fig)
     
+@st.cache_resource    
 def seasonality(df):
     # Set frequency for date range
     start_date_str = '2014-02-25 00:00:00'
@@ -106,7 +111,7 @@ def seasonality(df):
     df = df.set_index('Date')
      
     # Perform seasonal decomposition
-    decompose_result_mult = seasonal_decompose(df['Close'], model="additive", period=5)
+    decompose_result_mult = seasonal_decompose(df['Adj Close'], model="additive", period=5)
     trend = decompose_result_mult.trend
     seasonal = decompose_result_mult.seasonal
     residual = decompose_result_mult.resid
@@ -116,13 +121,14 @@ def seasonality(df):
     st.line_chart(trend)
     st.line_chart(seasonal)
     st.line_chart(residual)
+    
     st.subheader("Training Set 80%")
     train, test = df.iloc[:int(0.8*len(df))], df.iloc[int(0.8*len(df)):]
     st.write(train)
     st.subheader("Test Set 20%")
     st.write(test)
     
-
+@st.cache_data
 def stationary_check(series, window=5):
     # Plot rolling statistics
     fig = plt.figure(figsize=(10,5))
@@ -140,9 +146,107 @@ def stationary_check(series, window=5):
     for key,value in result[4].items():
         dfoutput['Critical Value (%s)'%key] = value
     st.subheader("Augmented Dickey-Fuller test for stationarity")
+    st.header("First Test")
     st.write(dfoutput)
     st.pyplot(fig)
+    
+@st.cache_data    
+def fuller_test(series, window=5):
+    # Apply Box-Cox transformation
+    series_boxcox, _ = boxcox(series)
+
+# Convert series_boxcox to Pandas Series object
+    series_boxcox = pd.Series(series_boxcox)
+
+# Plot rolling statistics of transformed data
+    fig = plt.figure(figsize=(10,5))
+    orig = plt.plot(series_boxcox, color='blue', label='Original')
+    mean = plt.plot(series_boxcox.rolling(window).mean(), color='red', label='Rolling Mean')
+    std = plt.plot(series_boxcox.rolling(window).std(), color='black', label='Rolling Std')
+    plt.legend(loc='best')
+    plt.title('Rolling Mean & Standard Deviation', size=20)
+    plt.show(block=False)
+
+# Perform ADF test on transformed data
+    result = adfuller(series_boxcox)
+    doutput = pd.Series(result[0:4], index=['Test Statistic','p-value',
+                                         '#Lags Used','Number of Observations Used'])
+    for key,value in result[4].items():
+        doutput['Critical Value (%s)'%key] = value
+    st.write(doutput)
+    st.pyplot(fig)
+    
+@st.cache_data
+def regular_trans(series, window=5):
+    # Apply regular transformation
+    series_diff = series.diff(1)
+
+    # Plot rolling statistics of transformed data
+    def plot_rolling_stats(series, window):
+        fig = plt.figure(figsize=(10,5))
+        orig = plt.plot(series, color='blue', label='Original')
+        mean = plt.plot(series.rolling(window).mean(), color='red', label='Rolling Mean')
+        std = plt.plot(series.rolling(window).std(), color='black', label='Rolling Std')
+        plt.legend(loc='best')
+        plt.title('Rolling Mean & Standard Deviation', size=20)
+        plt.show(block=False)
+        st.pyplot(fig)
+    plot_rolling_stats(series_diff[1:], window)
+    # Perform ADF test on transformed data
+    res = adfuller(series_diff[1:])
+    doutputs = pd.Series(res[0:4], index=['Test Statistic','p-value',
+                                             '#Lags Used','Number of Observations Used'])
+    for key,value in res[4].items():
+        doutputs['Critical Value (%s)'%key] = value
+    st.subheader('Regular Data')
+    st.write(doutputs)
+    
+@st.cache_data   
+def autocorrelation(series, window=5):
+    fig = plt.figure(figsize=(14,7))
+    ax_1 = fig.add_subplot(221)
+    orig = ax_1.plot(series, color='blue', label='Original')
+    mean = ax_1.plot(series.rolling(window).mean(), color='red', label='Rolling Mean')
+    std = ax_1.plot(series.rolling(window).std(), color='black', label='Rolling Std')
+    ax_1.legend(loc='best')
+    ax_1.set_title('Rolling Mean & Standard Deviation', size=20)
+
+    ax_2 = fig.add_subplot(222)
+    plot_acf(series,ax=ax_2,lags=40,zero=False)
+    ax_2.set_ylim(-0.5, 0.5)
+    ax_2.set_title("Autocorrelation Function (ACF)",size=20)
+
+    ax_3 = fig.add_subplot(223)
+    plot_pacf(series,ax=ax_3,lags=40,zero=False,method='ols')
+    ax_3.set_ylim(-0.5, 0.5)
+    ax_3.set_title("Partial Autocorrelation Function (PACF)",size=20)
+
+    ax_4 = fig.add_subplot(224)
+    series_diff = series.diff(1) # regular Transformations
+    orig = ax_4.plot(series_diff, color='blue', label='Original')
+    mean = ax_4.plot(series_diff.rolling(window).mean(), color='red', label='Rolling Mean')
+    std = ax_4.plot(series_diff.rolling(window).std(), color='black', label='Rolling Std')
+    ax_4.legend(loc='best')
+    ax_4.set_title('Rolling Mean & Standard Deviation (Transformed)', size=20)
+
+    plt.tight_layout()
+    plt.show(block=False)
+    st.write(fig)
+    
+@st.cache_data
+def fit_arima(df):
+    train, test = df.iloc[:int(0.8*len(df))], df.iloc[int(0.8*len(df)):]
+    exogenous=train[['Open','Close']][5:]
+    model_auto = auto_arima(train.Close[1:], m=5, max_order=None,
+                        max_p=10, max_q=10, max_d=2,
+                        max_P=5, max_Q=5, max_D=2,
+                        maxiter=20, alpha=0.05, n_jobs=-1, trend='ct',
+                       information_criterion='oob',out_of_sample_size=int(0.1*len(train)))
+    
+    return model_auto
+
 # Display data in Streamlit app
+@st.cache_data
 def main():
     
     # Display the title of the app
@@ -192,8 +296,24 @@ def main():
     st.write(season_trends)
     
     #Stationary check on the data
-    output_checks = stationary_check(df['Adj Close'])
+    output_checks = stationary_check(df['Close'])
     st.write(output_checks)
+    st.subheader("Second Test")
+    fuller_output = fuller_test(df['Close'])
+    st.write(fuller_output)
+    
+    #regular transform
+    st.subheader("Regular Transform ")
+    regular =regular_trans(df['Close'])
+    st.write(regular)
+    
+    st.subheader('Auto Correlation')
+    auto = autocorrelation(df['Close'])
+    st.write(auto)
+    
+    st.subheader('show the model output using ARIMA')
+    model = fit_arima(df)
+    st.write(model.summary())
     
     # Add Insights
     st.subheader("Insights")
