@@ -5,7 +5,6 @@ from datetime import datetime
 from sklearn.preprocessing import StandardScaler
 import glob
 import numpy as np
-import pandas as pd
 from itertools import product
 import matplotlib.pyplot as plt
 import matplotlib
@@ -96,7 +95,53 @@ def resampling(df):
     axes[1,1].plot(df_Q[['Open','High','Low','Close']])
     axes[1,1].set_title("Quarterly mean Price",size=16)
     st.pyplot(fig)
+    
+def seasonality(df):
+    # Set frequency for date range
+    start_date_str = '2014-02-25 00:00:00'
+    end_date_str = '2022-06-22 00:00:00'
+    date_rng = pd.date_range(start=pd.to_datetime(start_date_str), end=pd.to_datetime(end_date_str), freq='B')
+    
+    df['Date'] = date_rng
+    df = df.set_index('Date')
+     
+    # Perform seasonal decomposition
+    decompose_result_mult = seasonal_decompose(df['Close'], model="additive", period=5)
+    trend = decompose_result_mult.trend
+    seasonal = decompose_result_mult.seasonal
+    residual = decompose_result_mult.resid
+    
+    # Plot results
+    st.line_chart(decompose_result_mult.observed)
+    st.line_chart(trend)
+    st.line_chart(seasonal)
+    st.line_chart(residual)
+    st.subheader("Training Set 80%")
+    train, test = df.iloc[:int(0.8*len(df))], df.iloc[int(0.8*len(df)):]
+    st.write(train)
+    st.subheader("Test Set 20%")
+    st.write(test)
+    
 
+def stationary_check(series, window=5):
+    # Plot rolling statistics
+    fig = plt.figure(figsize=(10,5))
+    orig = plt.plot(series, color='blue', label='Original')
+    mean = plt.plot(series.rolling(window).mean(), color='red', label='Rolling Mean')
+    std = plt.plot(series.rolling(window).std(), color='black', label='Rolling Std')
+    plt.legend(loc='best')
+    plt.title('Rolling Mean & Standard Deviation', size=20)
+    plt.show(block=False)
+    
+    # Augmented Dickey-Fuller test for stationarity
+    result = adfuller(series) #Regular differentiation
+    dfoutput = pd.Series(result[0:4], index=['Test Statistic','p-value',
+                                             '#Lags Used','Number of Observations Used'])
+    for key,value in result[4].items():
+        dfoutput['Critical Value (%s)'%key] = value
+    st.subheader("Augmented Dickey-Fuller test for stationarity")
+    st.write(dfoutput)
+    st.pyplot(fig)
 # Display data in Streamlit app
 def main():
     
@@ -140,6 +185,15 @@ def main():
     st.subheader("Data Resampling")
     samp = resampling(df)
     st.write(samp)
+    
+    #Seasonality trends
+    st.subheader("Seasonality Trends")
+    season_trends = seasonality(df)
+    st.write(season_trends)
+    
+    #Stationary check on the data
+    output_checks = stationary_check(df['Adj Close'])
+    st.write(output_checks)
     
     # Add Insights
     st.subheader("Insights")
