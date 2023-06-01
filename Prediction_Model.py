@@ -175,8 +175,7 @@ def fuller_test(series, window=5):
         doutput['Critical Value (%s)'%key] = value
     st.write(doutput)
     st.pyplot(fig)
-    
-@st.cache_data
+      
 def regular_trans(series, window=5):
     # Apply regular transformation
     series_diff = series.diff(1)
@@ -311,13 +310,28 @@ def main():
     auto = autocorrelation(df['Close'])
     st.write(auto)
     
-    st.subheader('show the model output using ARIMA')
+    st.subheader('Show the model output using ARIMA')
     model = fit_arima(df)
     st.write(model.summary())
     
     # Add Insights
     st.subheader("Insights")
     st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volume towards the end of 2021, which coincides with the news of Elon Musk's buyout offer.")
+
+   # Residual Analysis
+    st.header("Residual Analysis")
+    residualz = model.resid
+    fig4, ax = plt.subplots(1, 3)
+    fig4.set_size_inches(15, 5)
+    # Plot distribution of residuals
+    sns.distplot(residualz, ax=ax[0])
+    ax[0].set_title('Distribution of Residuals')
+    # Plot ACF and PACF of residuals
+    plot_acf(residualz, lags=range(1, 20), ax=ax[1])
+    plot_pacf(residualz, lags=range(1, 20), ax=ax[2])
+    ax[1].set_title('ACF of Residuals')
+    ax[2].set_title('PACF of Residuals')
+    st.pyplot()
 
 
 if __name__ == '__main__':
