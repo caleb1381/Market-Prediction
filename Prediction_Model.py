@@ -232,18 +232,23 @@ def autocorrelation(series, window=5):
     plt.tight_layout()
     plt.show(block=False)
     st.write(fig)
-    
+
 @st.cache_data
-def fit_arima(df):
+def fit_arima(df, exog_cols=['Open','Close'], m=5, alpha=0.05, crit='oob', maxiter=20, oos_size=0.1):
+    # Split the time series data into train and test sets, and extract exogenous variables
     train = df.iloc[:int(0.8*len(df))]
     test = df.iloc[int(0.8*len(df)):]
-    exogenous=train[['Open','Close']][5:]
-    model_auto = auto_arima(train.Close[1:], m=5, max_order=None,
-                        max_p=10, max_q=10, max_d=2,
-                        max_P=5, max_Q=5, max_D=2,
-                        maxiter=20, alpha=0.05, n_jobs=-1, trend='ct',
-                       information_criterion='oob',out_of_sample_size=int(0.1*len(train)))
-    
+    exogenous = train[exog_cols][5:]
+
+    # Automatically select the best ARIMA model using pmdarima.auto_arima()
+    try:
+        model_auto = auto_arima(train.Close[1:], exogenous=exogenous, m=m, alpha=alpha, 
+                                information_criterion=crit, out_of_sample_size=int(oos_size*len(train)), 
+                                maxiter=maxiter, trend='ct', n_jobs=-1)
+    except ValueError as e:
+        st.write(f"ARIMA model fitting failed with error: {e}")
+        return None
+
     return model_auto
 
 def predict_arima(model, df):
@@ -280,6 +285,7 @@ def plot_residuals(df):
 
     # Display plots
     st.pyplot(fig)
+
 
 # Display data in Streamlit app
 @st.cache_resource
@@ -348,20 +354,29 @@ def main():
     st.write(auto)
     
     st.subheader('Show the model output using ARIMA')
-    model = fit_arima(df)
-    st.write(model.summary())
-    
+    df = pd.read_csv('TWITTER.csv', index_col='Date')
+    # Fit an ARIMA model to the data using pmdarima
+    model = fit_arima(df, exog_cols=['Open', 'Close'], m=5, alpha=0.01, crit='aic', maxiter=50)
+
+    if model is not None:
+        st.write(model.summary())
+    else:
+        st.write("ARIMA model fitting failed; please check your data and parameters.")
+        
     #my Residual Anaylsis
     st.subheader("Residual Analysis")
     models = plot_residuals(model)
     st.write(models)
     # Add Insights
     #using the test data to make predictions
-    st.header("predicted Data")
+    st.header("Predicted Data")
     predicted_data = predict_arima(model, df)
     st.write(predicted_data)
     p_conversion = pd.DataFrame(predicted_data)
     
+    #predicted data
+    # User input for start and end dates
+    st.subheader("generated prediction")
     
     st.subheader("Insights")
     st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volume towards the end of 2021, which coincides with the news of Elon Musk's buyout offer.")
