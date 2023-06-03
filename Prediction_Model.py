@@ -34,6 +34,9 @@ sns.set_style('darkgrid')
 #ignore warnings on console
 warnings.filterwarnings("ignore")
 
+# Set frequency for date range
+start_date_str ='2014-02-25 00:00:00'
+end_date_str = '2022-06-22 00:00:00'
 
 @st.cache_data
 def load_data():
@@ -102,16 +105,13 @@ def resampling(df):
     
 @st.cache_resource    
 def seasonality(df):
-    # Set frequency for date range
-    start_date_str = '2014-02-25 00:00:00'
-    end_date_str = '2022-06-22 00:00:00'
     date_rng = pd.date_range(start=pd.to_datetime(start_date_str), end=pd.to_datetime(end_date_str), freq='B')
     
     df['Date'] = date_rng
     df = df.set_index('Date')
      
     # Perform seasonal decomposition
-    decompose_result_mult = seasonal_decompose(df['Adj Close'], model="additive", period=5)
+    decompose_result_mult = seasonal_decompose(df['Close'], model="additive", period=5)
     trend = decompose_result_mult.trend
     seasonal = decompose_result_mult.seasonal
     residual = decompose_result_mult.resid
@@ -123,7 +123,8 @@ def seasonality(df):
     st.line_chart(residual)
     
     st.subheader("Training Set 80%")
-    train, test = df.iloc[:int(0.8*len(df))], df.iloc[int(0.8*len(df)):]
+    train =df.iloc[:int(0.8*len(df))]
+    test = df.iloc[int(0.8*len(df)):]
     st.write(train)
     st.subheader("Test Set 20%")
     st.write(test)
@@ -234,7 +235,8 @@ def autocorrelation(series, window=5):
     
 @st.cache_data
 def fit_arima(df):
-    train, test = df.iloc[:int(0.8*len(df))], df.iloc[int(0.8*len(df)):]
+    train = df.iloc[:int(0.8*len(df))]
+    test = df.iloc[int(0.8*len(df)):]
     exogenous=train[['Open','Close']][5:]
     model_auto = auto_arima(train.Close[1:], m=5, max_order=None,
                         max_p=10, max_q=10, max_d=2,
@@ -244,8 +246,43 @@ def fit_arima(df):
     
     return model_auto
 
+def predict_arima(model, df):
+    # Split the data into train and test sets
+    train = df.iloc[:int(0.8*len(df))]
+    test = df.iloc[int(0.8*len(df)):]
+
+    # Extract the exogenous variables for the test set
+    exogenous = test[['Open', 'Close']][5:]
+
+    # Make predictions using the ARIMA model
+    predictions = model.predict(n_periods=len(test), exogenous=exogenous)
+
+    return predictions
+
+#residual Anaylsis of trianed data
+def plot_residuals(df):
+    # Retrieve model residuals
+    residuals = df.resid()
+
+    # Create figure
+    fig = plt.figure(figsize=(14, 5))
+
+    # Plot residuals
+    ax_1 = fig.add_subplot(121)
+    ax_1.plot(residuals)
+    ax_1.set_title("Residuals of Returns", size=24)
+
+    # Plot ACF for residuals
+    ax_2 = fig.add_subplot(122)
+    plot_acf(residuals, lags=40, zero=False, ax=ax_2)
+    ax_2.set_title("ACF for Residuals of Returns", size=24)
+    ax_2.set_ylim(-0.5, 0.5)
+
+    # Display plots
+    st.pyplot(fig)
+
 # Display data in Streamlit app
-@st.cache_data
+@st.cache_resource
 def main():
     
     # Display the title of the app
@@ -314,25 +351,20 @@ def main():
     model = fit_arima(df)
     st.write(model.summary())
     
+    #my Residual Anaylsis
+    st.subheader("Residual Analysis")
+    models = plot_residuals(model)
+    st.write(models)
     # Add Insights
+    #using the test data to make predictions
+    st.header("predicted Data")
+    predicted_data = predict_arima(model, df)
+    st.write(predicted_data)
+    p_conversion = pd.DataFrame(predicted_data)
+    
+    
     st.subheader("Insights")
     st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volume towards the end of 2021, which coincides with the news of Elon Musk's buyout offer.")
-
-   # Residual Analysis
-    st.header("Residual Analysis")
-    residualz = model.resid
-    fig4, ax = plt.subplots(1, 3)
-    fig4.set_size_inches(15, 5)
-    # Plot distribution of residuals
-    sns.distplot(residualz, ax=ax[0])
-    ax[0].set_title('Distribution of Residuals')
-    # Plot ACF and PACF of residuals
-    plot_acf(residualz, lags=range(1, 20), ax=ax[1])
-    plot_pacf(residualz, lags=range(1, 20), ax=ax[2])
-    ax[1].set_title('ACF of Residuals')
-    ax[2].set_title('PACF of Residuals')
-    st.pyplot()
-
 
 if __name__ == '__main__':
     main()
