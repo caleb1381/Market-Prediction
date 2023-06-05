@@ -389,7 +389,7 @@ def main():
     
     #predicted data
     def run():
-        st.subheader("Generated  Prediction")
+        
         # Load stock price data
         stock_data = pd.read_csv('TWITTER.csv', parse_dates=['Date'])
         train = stock_data.loc[stock_data['Date'] < '2020-01-01 00:00:00']
@@ -421,7 +421,7 @@ def main():
     run()
     
     st.subheader("Insights")
-    st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volume towards the end of 2021, which coincides with the news of Elon Musk's buyout offer.")
+    st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volumn towards its take over")
 
 if __name__ == '__main__':
     main()
