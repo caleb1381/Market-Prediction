@@ -264,6 +264,19 @@ def predict_arima(model, df):
 
     return predictions
 
+def generate_predictions(train, test, exogenous):
+    # Fit SARIMAX model to training data
+    model = SARIMAX(train['Open'], order=(1, 1, 0), seasonal_order=(1, 0, 0, 12))
+    model_fit = model.fit()
+
+    # Generate predictions for test data using fitted model
+    preds = model_fit.predict(steps=len(test), exog=test[exogenous])
+
+    # Convert predictions and actual test data to Pandas Series and return as a tuple
+    preds_series = pd.Series(preds, index=test.index)
+    actual_series = test['Open']
+    return (actual_series, preds_series)
+
 #residual Anaylsis of trianed data
 def plot_residuals(df):
     # Retrieve model residuals
@@ -288,7 +301,7 @@ def plot_residuals(df):
 
 
 # Display data in Streamlit app
-@st.cache_resource
+@st.cache_resource(experimental_allow_widgets=True)
 def main():
     
     # Display the title of the app
@@ -375,8 +388,37 @@ def main():
     p_conversion = pd.DataFrame(predicted_data)
     
     #predicted data
-    # User input for start and end dates
-    st.subheader("generated prediction")
+    def run():
+        st.subheader("Generated  Prediction")
+        # Load stock price data
+        stock_data = pd.read_csv('TWITTER.csv', parse_dates=['Date'])
+        train = stock_data.loc[stock_data['Date'] < '2020-01-01 00:00:00']
+        test = stock_data.loc[(stock_data['Date'] >= '2020-01-01 00:00:00') & (stock_data['Date'] <= '2022-06-22 00:00:00')]
+
+        # Create sidebar with options for user input
+        st.sidebar.header('User Input Parameters')
+        exogenous_var = st.sidebar.selectbox('Exogenous Variable', ['Volume', 'High', 'Low'])
+        train_start_date = pd.Timestamp(st.sidebar.date_input('Training Start Date', value=train['Date'].iloc[0]))
+        train_end_date = pd.Timestamp(st.sidebar.date_input('Training End Date', value=train['Date'].iloc[-1]))
+        test_start_date = pd.Timestamp(st.sidebar.date_input('Test Start Date', value=test['Date'].iloc[0]))
+        test_end_date = pd.Timestamp(st.sidebar.date_input('Test End Date', value=test['Date'].iloc[-1]))
+        
+        # Subset data based on user input
+        train = train.loc[(train['Date'] >= train_start_date) & (train['Date'] <= train_end_date)]
+        test = test.loc[(test['Date'] >= test_start_date) & (test['Date'] <= test_end_date)]
+
+        # Generate and display predictions
+        actual, preds = generate_predictions(train, test, exogenous_var)
+        st.header('Stock Price Data')
+        st.write(actual)
+   
+        st.header('**Actual vs Predicted Values**')
+        fig, ax = plt.subplots()
+        ax.plot(actual, label='Actual')
+        ax.plot(preds, label='Predicted')
+        ax.legend() 
+        st.pyplot(fig)
+    run()
     
     st.subheader("Insights")
     st.write("From the visualization, we can observe that the stock prices of Twitter have been increasing steadily over the years. We can also see a spike in volume towards the end of 2021, which coincides with the news of Elon Musk's buyout offer.")
