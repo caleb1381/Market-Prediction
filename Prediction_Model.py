@@ -386,7 +386,8 @@ def main():
     predicted_data = predict_arima(model, df)
     st.write(predicted_data)
     p_conversion = pd.DataFrame(predicted_data)
-    
+    st.subheader("Data Histogram")
+    st.bar_chart(p_conversion)
     #predicted data
     def run():
         
